@@ -872,7 +872,7 @@ public class AXmlResourceParser implements XmlResourceParser {
 
         int event = m_event;
         resetEventInfo();
-
+        int lastChunkType = -1;
         while (true) {
             if (m_decreaseDepth) {
                 m_decreaseDepth = false;
@@ -893,17 +893,19 @@ public class AXmlResourceParser implements XmlResourceParser {
                 chunkType = m_reader.readInt();
             }
 
+            int chunkSize = 0;
             if (chunkType == CHUNK_RESOURCEIDS) {
-                int chunkSize = m_reader.readInt();
+                chunkSize = m_reader.readInt();
                 if (chunkSize < 8 || (chunkSize % 4) != 0) {
                     throw new IOException("Invalid resource ids size (" + chunkSize + ").");
                 }
                 m_resourceIDs = m_reader.readIntArray(chunkSize / 4 - 2);
+                lastChunkType = chunkType;
                 continue;
             }
 
-            if (chunkType < CHUNK_XML_FIRST || chunkType > CHUNK_XML_LAST) {
-                throw new IOException("Invalid chunk type (" + chunkType + ").");
+            if ((chunkType < CHUNK_XML_FIRST || chunkType > CHUNK_XML_LAST) && (lastChunkType != CHUNK_RESOURCEIDS)) {
+                throw new IOException("Invalid chunk type (" + Integer.toHexString(chunkType) + ").");
             }
 
             // Fake START_DOCUMENT event.
@@ -913,12 +915,13 @@ public class AXmlResourceParser implements XmlResourceParser {
             }
 
             // Common header.
-			/* chunkSize */m_reader.skipInt();
+			/* chunkSize */
+            chunkSize = m_reader.readInt();
             int lineNumber = m_reader.readInt();
 			/* 0xFFFFFFFF */m_reader.skipInt();
 
-            if (chunkType == CHUNK_XML_START_NAMESPACE || chunkType == CHUNK_XML_END_NAMESPACE) {
-                if (chunkType == CHUNK_XML_START_NAMESPACE) {
+            if (chunkType == CHUNK_XML_START_NAMESPACE || chunkType == CHUNK_XML_END_NAMESPACE || lastChunkType == CHUNK_RESOURCEIDS) {
+                if (chunkType == CHUNK_XML_START_NAMESPACE || lastChunkType == CHUNK_RESOURCEIDS) {
                     int prefix = m_reader.readInt();
                     int uri = m_reader.readInt();
                     m_namespaces.push(prefix, uri);
@@ -927,6 +930,8 @@ public class AXmlResourceParser implements XmlResourceParser {
 					/* uri */m_reader.skipInt();
                     m_namespaces.pop();
                 }
+                lastChunkType = chunkType;
+                m_reader.skipBytes(chunkSize - 4*6);
                 continue;
             }
 
@@ -967,6 +972,7 @@ public class AXmlResourceParser implements XmlResourceParser {
                 m_event = TEXT;
                 break;
             }
+            lastChunkType = chunkType;
         }
     }
 
